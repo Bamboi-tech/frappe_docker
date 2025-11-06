@@ -91,3 +91,234 @@ This repository is only for container related stuff. You also might want to cont
 - [Frappe framework](https://github.com/frappe/frappe#contributing),
 - [ERPNext](https://github.com/frappe/erpnext#contributing),
 - [Frappe Bench](https://github.com/frappe/bench).
+
+## Development setup (Bamboi-tech fork)
+
+Create host directories for bind mounts (one time):
+
+```bash
+mkdir -p ~/frappe-local/{apps,sites,logs,gitops}
+```
+
+Clone this repo (fork) and prepare env:
+
+```bash
+git clone https://github.com/Bamboi-tech/frappe_docker
+cd frappe_docker
+cp example.env .env
+```
+
+Local dev env vars (example):
+
+```plaintext
+SITES=dev.localhost
+PULL_POLICY=always
+# absolute path of your local monorepo root
+PROJECT_ROOT=/Users/<you>/frappe-local
+```
+
+Render compose to ../gitops with overrides, then up:
+
+```bash
+mkdir -p ../gitops
+docker compose -f compose.yaml \
+  -f overrides/compose.mariadb.yaml \
+  -f overrides/compose.redis.yaml \
+  -f overrides/compose.bind-mounts.yaml \
+  -f overrides/compose.assets.volume.yaml \
+  -f overrides/compose.ports.yaml \
+  config > ../gitops/docker-compose.yml
+
+docker compose -p frappe-local -f ../gitops/docker-compose.yml up -d --force-recreate
+```
+
+Shared assets volume
+
+- This fork includes `overrides/compose.assets.volume.yaml`, ensuring backend and frontend share `sites/assets` to prevent hashed CSS/JS mismatches. For clarity, the override looks like:
+
+```yaml
+services:
+  backend:
+    volumes:
+      - assets:/home/frappe/frappe-bench/sites/assets
+  frontend:
+    volumes:
+      - assets:/home/frappe/frappe-bench/sites/assets:ro
+volumes:
+  assets:
+    name: frappe_docker_assets
+```
+
+Install apps for local dev (bind-mount workflow)
+
+- Because `apps/` is bind-mounted, clones will appear under `~/frappe-local/apps/<app>` so you can edit on host.
+
+```bash
+docker compose -p frappe-local exec backend bench get-app --branch develop https://github.com/Bamboi-tech/kn_integration
+docker compose -p frappe-local exec backend bench --site dev.localhost install-app kn_integration
+```
+
+Zsh helper to rebuild/sync assets (subshell-safe)
+
+- Add to your `~/.zshrc`, then `source ~/.zshrc`. Running in a subshell prevents your interactive shell from closing due to `-euo pipefail`.
+
+```bash
+frappe_assets_sync() (
+  set -euo pipefail
+
+  PROJECT=${1:-frappe-local}
+  COMPOSE_FILE="${2:-$HOME/frappe-local/gitops/docker-compose.yml}"
+  SITE=${3:-dev.localhost}
+
+  docker compose -p "$PROJECT" -f "$COMPOSE_FILE" exec backend bash -lc "
+    set -e
+    cd /home/frappe/frappe-bench
+    NODEBIN=\$(ls -d /home/frappe/.nvm/versions/node/*/bin | head -n1); export PATH=\"$NODEBIN:$PATH\"
+    bench --site $SITE migrate
+    bench build --force
+    for app in \$(cat sites/apps.txt); do
+      [ -d apps/\$app/\$app/public ] || continue
+      src=\"apps/\$app/\$app/public\"; dst=\"sites/assets/\$app\"
+      rm -rf \"\$dst\"; mkdir -p \"\$dst\"; cp -a \"\$src/.\" \"\$dst/\"
+    done
+    bench set-config -g asset_version \$(date +%s)
+    bench --site $SITE clear-website-cache
+    bench --site $SITE clear-cache
+  "
+
+  docker compose -p "$PROJECT" -f "$COMPOSE_FILE" restart backend frontend
+
+  docker compose -p "$PROJECT" -f "$COMPOSE_FILE" exec backend  md5sum sites/assets/assets.json
+  docker compose -p "$PROJECT" -f "$COMPOSE_FILE" exec frontend md5sum sites/assets/assets.json
+
+  HASH=$(docker compose -p "$PROJECT" -f "$COMPOSE_FILE" exec -T backend bash -lc \
+    "grep -o 'desk.bundle.[A-Z0-9]\\+\\.css' sites/assets/assets.json | tail -n1" | tr -d $'\r')
+  echo "CSS hash: $HASH"
+  docker compose -p "$PROJECT" -f "$COMPOSE_FILE" exec backend  bash -lc "ls -l sites/assets/frappe/dist/css/$HASH"
+  docker compose -p "$PROJECT" -f "$COMPOSE_FILE" exec frontend bash -lc "ls -l sites/assets/frappe/dist/css/$HASH"
+)
+```
+
+Optional: Local VM-style build (apps.json)
+
+- You can mirror the VM flow locally (build image). You can still include bind-mounts to override a baked app while developing.
+- macOS-safe base64:
+
+```bash
+export APPS_JSON_BASE64="$(base64 < apps.json | tr -d '\n')"
+```
+
+- GNU/Linux:
+
+```bash
+export APPS_JSON_BASE64=$(base64 -w 0 apps.json)
+```
+
+- Build:
+
+```bash
+docker build \
+  --build-arg=FRAPPE_PATH=https://github.com/frappe/frappe \
+  --build-arg=FRAPPE_BRANCH=version-15 \
+  --build-arg=APPS_JSON_BASE64=$APPS_JSON_BASE64 \
+  --tag=custom:15 \
+  --file=images/custom/Containerfile .
+```
+
+- In `.env` set:
+
+```plaintext
+SITES=dev.localhost
+CUSTOM_IMAGE=custom
+CUSTOM_TAG=15
+PULL_POLICY=never
+PROJECT_ROOT=/Users/<you>/frappe-local
+```
+
+- If you want live edits, include `overrides/compose.bind-mounts.yaml` too; otherwise omit it to test the baked image only.
+
+## Production (VM) setup
+
+Env (example):
+
+```plaintext
+SITES=erp.bamboi.eu
+LETSENCRYPT_EMAIL=tools@bamboi.eu
+CUSTOM_IMAGE=custom
+CUSTOM_TAG=15
+PULL_POLICY=never
+```
+
+Build custom image from apps.json:
+
+```bash
+export APPS_JSON_BASE64=$(base64 -w 0 apps.json)
+docker build \
+  --build-arg=FRAPPE_PATH=https://github.com/frappe/frappe \
+  --build-arg=FRAPPE_BRANCH=version-15 \
+  --build-arg=APPS_JSON_BASE64=$APPS_JSON_BASE64 \
+  --tag=custom:15 \
+  --file=images/custom/Containerfile .
+```
+
+Render compose with HTTPS and shared assets, then up:
+
+```bash
+mkdir -p ~/gitops
+docker compose -f compose.yaml \
+  -f overrides/compose.mariadb.yaml \
+  -f overrides/compose.redis.yaml \
+  -f overrides/compose.https-dynamic.yaml \
+  -f overrides/compose.assets.volume.yaml \
+  config > ~/gitops/docker-compose.yml
+
+docker compose -p erpnext-vm-bamboi -f ~/gitops/docker-compose.yml up -d --force-recreate
+```
+
+Zsh helper (VM defaults):
+Zsh helper to rebuild/sync assets (subshell-safe)
+
+- Add to your `~/.zshrc`, then `source ~/.zshrc`. Running in a subshell prevents your interactive shell from closing due to `-euo pipefail`.
+
+
+```bash
+frappe_assets_sync_vm() (
+  set -euo pipefail
+
+  PROJECT=${1:-erpnext-vm-bamboi}
+  COMPOSE_FILE="${2:-$HOME/gitops/docker-compose.yml}"
+  SITE=${3:-erp.bamboi.eu}
+
+  docker compose -p "$PROJECT" -f "$COMPOSE_FILE" exec backend bash -lc "
+    set -e
+    cd /home/frappe/frappe-bench
+    NODEBIN=\$(ls -d /home/frappe/.nvm/versions/node/*/bin | head -n1); export PATH=\"$NODEBIN:$PATH\"
+    bench --site $SITE migrate
+    bench build --force
+    for app in \$(cat sites/apps.txt); do
+      [ -d apps/\$app/\$app/public ] || continue
+      src=\"apps/\$app/\$app/public\"; dst=\"sites/assets/\$app\"
+      rm -rf \"\$dst\"; mkdir -p \"\$dst\"; cp -a \"\$src/.\" \"\$dst/\"
+    done
+    bench set-config -g asset_version \$(date +%s)
+    bench --site $SITE clear-website-cache
+    bench --site $SITE clear-cache
+  "
+
+  docker compose -p "$PROJECT" -f "$COMPOSE_FILE" restart backend frontend
+
+  docker compose -p "$PROJECT" -f "$COMPOSE_FILE" exec backend  md5sum sites/assets/assets.json
+  docker compose -p "$PROJECT" -f "$COMPOSE_FILE" exec frontend md5sum sites/assets/assets.json
+
+  HASH=$(docker compose -p "$PROJECT" -f "$COMPOSE_FILE" exec -T backend bash -lc \
+    "grep -o 'desk.bundle.[A-Z0-9]\\+\\.css' sites/assets/assets.json | tail -n1" | tr -d $'\r')
+  echo "CSS hash: $HASH"
+  docker compose -p "$PROJECT" -f "$COMPOSE_FILE" exec backend  bash -lc "ls -l sites/assets/frappe/dist/css/$HASH"
+  docker compose -p "$PROJECT" -f "$COMPOSE_FILE" exec frontend bash -lc "ls -l sites/assets/frappe/dist/css/$HASH"
+)
+```
+
+Notes:
+
+- Local uses bind mounts (`overrides/compose.bind-mounts.yaml`) and `PROJECT_ROOT`; VM uses a custom image built from `apps.json`. Both use the shared `assets` volume override to prevent CSS/JS hash mismatches.
+- If a repo URL changes but the app’s internal `app_name` stays the same, just update `apps.json` and rebuild/redeploy; the site remains intact.
