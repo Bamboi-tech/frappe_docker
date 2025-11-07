@@ -3,29 +3,39 @@ set -euo pipefail
 
 PROJECT=${1:-erpnext-vm-bamboi}
 COMPOSE_FILE=${2:-$HOME/gitops/docker-compose.yml}
-TMP_OVERRIDE=${3:-/tmp/compose.ssh-mount.yaml}
-KN_HOST=${4:-mft-test.kuehne-nagel.com}
-KN_USER=${5:-Bamboi}
+KN_HOST=${3:-mft-test.kuehne-nagel.com}
+KN_USER=${4:-Bamboi}
 
-cat > "$TMP_OVERRIDE" <<'YAML'
-services:
-  backend:
-    volumes:
-      - ~/.ssh/kn_mft_test_ed25519:/home/frappe/.ssh/kn_mft_test_ed25519:ro
-YAML
+# ensure stack is up (no SSH key mounts)
+docker compose -p "$PROJECT" -f "$COMPOSE_FILE" up -d
 
-docker compose -p "$PROJECT" -f "$COMPOSE_FILE" -f "$TMP_OVERRIDE" up -d
+docker compose -p "$PROJECT" -f "$COMPOSE_FILE" exec backend bash -lc '
+  set -e
+  echo "Preparing SSH directory..."
+  mkdir -p /home/frappe/.ssh
+'
 
+# copy key into container (owned by root)
+CID=$(docker compose -p "$PROJECT" -f "$COMPOSE_FILE" ps -q backend)
+docker cp ~/.ssh/kn_mft_test_ed25519 "$CID":/home/frappe/.ssh/kn_mft_test_ed25519
+
+# fix ownership/permissions as root
+docker compose -p "$PROJECT" -f "$COMPOSE_FILE" exec -u root backend bash -lc '
+  chown -R frappe:frappe /home/frappe/.ssh &&
+  chmod 700 /home/frappe/.ssh &&
+  chmod 600 /home/frappe/.ssh/kn_mft_test_ed25519
+'
+
+# ensure paramiko and upload a probe file
 docker compose -p "$PROJECT" -f "$COMPOSE_FILE" exec backend bash -lc '
   set -e
   cd /home/frappe/frappe-bench
   echo "test" > /tmp/kn_probe.xml.tmp
-  # ensure paramiko available in bench venv
   env/bin/python -c "import paramiko" || env/bin/pip install -q paramiko
   env/bin/python - <<PY
 import paramiko, os
-host = os.environ.get("KN_HOST","'"$KN_HOST"'")
-user = os.environ.get("KN_USER","'"$KN_USER"'")
+host = os.environ.get("KN_HOST", "'"$KN_HOST"'")
+user = os.environ.get("KN_USER", "'"$KN_USER"'")
 key_path = "/home/frappe/.ssh/kn_mft_test_ed25519"
 try:
     try:
