@@ -100,18 +100,19 @@ Create host directories for bind mounts (one time):
 mkdir -p ~/frappe-local/{apps,sites,logs,gitops}
 ```
 
-Clone this repo (fork) and prepare env:
+Folder layout (recommended)
 
 ```bash
+cd ~/frappe-local
 git clone https://github.com/Bamboi-tech/frappe_docker
 cd frappe_docker
 cp example.env .env
+export PROJECT_ROOT="$HOME/frappe-local"
 ```
 
-get the project root
-```bash
-cd ~/frappe-local && pwd
-```
+Alternative: You can keep `frappe_docker` elsewhere; ensure `PROJECT_ROOT` points to the absolute `~/frappe-local` path and the `~/frappe-local/{apps,sites,logs,gitops}` directories exist before bringing the stack up.
+
+Clone this repo (fork) and prepare env:
 
 Local dev env vars (example):
 
@@ -135,6 +136,13 @@ docker compose -f compose.yaml \
   config > ../gitops/docker-compose.yml
 
 docker compose -p frappe-local -f ../gitops/docker-compose.yml up -d --force-recreate
+```
+
+Ensure apps.txt exists (bind-mounts hide the image default)
+
+```bash
+mkdir -p ~/frappe-local/sites
+printf "frappe\nerpnext\n" > ~/frappe-local/sites/apps.txt
 ```
 
 Create the site (dev.localhost)
