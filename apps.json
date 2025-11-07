@@ -8,10 +8,6 @@
     "branch": "develop"
   },
   {
-    "url": "https://github.com/Bamboi-tech/kn_integration",
-    "branch": "develop"
-  },
-  {
     "url": "https://github.com/frappe/hrms",
     "branch": "develop"
   },

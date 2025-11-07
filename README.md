@@ -158,6 +158,17 @@ docker compose -p frappe-local exec backend bench get-app --branch develop https
 docker compose -p frappe-local exec backend bench --site dev.localhost install-app kn_integration
 ```
 
+⚠️ Private apps (UNTESTED):
+
+- Do NOT put private repos in `apps.json` for local bind-mount development. Clone them on the host via SSH and then run `install-app` as above. Example:
+
+```bash
+git clone git@github.com:Bamboi-tech/kn_integration.git ~/frappe-local/apps/kn_integration
+docker compose -p frappe-local exec backend bench --site dev.localhost install-app kn_integration
+```
+
+- Optionally keep a separate `apps.private.json` (committed here for tracking only) and use it to remember URLs/branches. Credentials must never be baked into images.
+
 Zsh helper to rebuild/sync assets (subshell-safe)
 
 - Add to your `~/.zshrc`, then `source ~/.zshrc`. Running in a subshell prevents your interactive shell from closing due to `-euo pipefail`.
@@ -236,6 +247,10 @@ PROJECT_ROOT=/Users/<you>/frappe-local
 ```
 
 - If you want live edits, include `overrides/compose.bind-mounts.yaml` too; otherwise omit it to test the baked image only.
+
+⚠️ Private apps (UNTESTED):
+
+- Keep private apps OUT of `apps.json` unless you are set up to provide credentials to the build (e.g., BuildKit SSH forwarding) or fetch at runtime with an SSH mount. Prefer keeping private entries in `apps.private.json` and installing them via host clone + `install-app`.
 
 ## Production (VM) setup
 
@@ -322,3 +337,39 @@ Notes:
 
 - Local uses bind mounts (`overrides/compose.bind-mounts.yaml`) and `PROJECT_ROOT`; VM uses a custom image built from `apps.json`. Both use the shared `assets` volume override to prevent CSS/JS hash mismatches.
 - If a repo URL changes but the app’s internal `app_name` stays the same, just update `apps.json` and rebuild/redeploy; the site remains intact.
+
+⚠️ Private apps (UNTESTED):
+
+- For production builds, keep private apps out of `apps.json`. Options:
+  - Clone and install after deploy via a temporary SSH key mount into `backend`, then run `bench get-app`/`install-app`, remove the mount, and rebuild assets.
+  - Or use BuildKit with `RUN --mount=type=ssh` in the image build to fetch private repos without persisting the key in layers. Validate this in your environment before relying on it.
+  - Track private app URLs in `apps.private.json` for documentation only.
+
+Deploy key on VM
+
+- The VM has an SSH key (deploy key) authorized for Bamboi-tech private repos (e.g., `~/.ssh/id_ed25519`). Do not bake this into images. If you need to fetch a private app from inside the container, mount the key temporarily and run the fetch:
+
+```bash
+# example: one-off override to mount key into backend
+cat > /tmp/compose.ssh-mount.yaml <<'YAML'
+services:
+  backend:
+    volumes:
+      - ~/.ssh/id_ed25519:/home/frappe/.ssh/id_ed25519:ro
+      - ~/.ssh/known_hosts:/home/frappe/.ssh/known_hosts:ro
+YAML
+
+docker compose -p erpnext-vm-bamboi \
+  -f ~/gitops/docker-compose.yml \
+  -f /tmp/compose.ssh-mount.yaml up -d
+
+docker compose -p erpnext-vm-bamboi exec backend bash -lc '
+  set -e
+  chmod 600 /home/frappe/.ssh/id_ed25519
+  GIT_SSH_COMMAND="ssh -i /home/frappe/.ssh/id_ed25519 -o StrictHostKeyChecking=accept-new" \
+    bench get-app --branch develop git@github.com:Bamboi-tech/kn_integration.git
+  bench --site erp.bamboi.eu install-app kn_integration
+'
+
+# remove the temporary mount by re-rendering without the override if desired
+```

@@ -1,0 +1,10 @@
+[
+  {
+    "url": "git@github.com:Bamboi-tech/kn_integration.git",
+    "branch": "develop",
+    "private": true,
+    "note": "Clone on host via SSH and install into site with bench install-app; do not include in apps.json."
+  }
+]
+
+
