@@ -137,6 +137,18 @@ docker compose -f compose.yaml \
 docker compose -p frappe-local -f ../gitops/docker-compose.yml up -d --force-recreate
 ```
 
+Create the site (dev.localhost)
+
+```bash
+docker compose -p frappe-local exec backend bash -lc '
+  cd /home/frappe/frappe-bench
+  bench new-site dev.localhost \
+    --mariadb-user-host-login-scope=% \
+    --db-root-password 123 \
+    --admin-password admin
+'
+```
+
 Shared assets volume
 
 - This fork includes `overrides/compose.assets.volume.yaml`, ensuring backend and frontend share `sites/assets` to prevent hashed CSS/JS mismatches. For clarity, the override looks like:
