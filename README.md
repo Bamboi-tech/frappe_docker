@@ -108,6 +108,11 @@ cd frappe_docker
 cp example.env .env
 ```
 
+get the project root
+```bash
+cd ~/frappe-local && pwd
+```
+
 Local dev env vars (example):
 
 ```plaintext
