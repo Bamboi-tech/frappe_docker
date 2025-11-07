@@ -183,6 +183,19 @@ docker compose -p frappe-local exec backend bench get-app --branch develop https
 docker compose -p frappe-local exec backend bench --site dev.localhost install-app kn_integration
 ```
 
+Troubleshooting (local bind-mount dev)
+
+- If bench raises `ModuleNotFoundError: kn_integration`, do a one‑time editable install inside backend, then (re)install/migrate:
+
+```bash
+docker compose -p frappe-local exec backend bash -lc '
+  cd /home/frappe/frappe-bench && env/bin/pip install -q -e apps/kn_integration
+'
+docker compose -p frappe-local exec backend bench --site dev.localhost install-app kn_integration
+docker compose -p frappe-local exec backend bench --site dev.localhost migrate
+docker compose -p frappe-local restart backend
+```
+
 ⚠️ Private apps (UNTESTED):
 
 - Do NOT put private repos in `apps.json` for local bind-mount development. Clone them on the host via SSH and then run `install-app` as above. Example:
@@ -398,3 +411,21 @@ docker compose -p erpnext-vm-bamboi exec backend bash -lc '
 
 # remove the temporary mount by re-rendering without the override if desired
 ```
+
+### SFTP test from backend (local & VM)
+
+Local (uses `overrides/compose.sftp.local.yaml`):
+
+```bash
+bash scripts/sftp_test_local.sh
+```
+
+VM (temporary mount):
+
+```bash
+bash scripts/sftp_test_vm.sh
+```
+
+Security:
+- Mount keys read-only; set 600 perms.
+- Pin KN host key in `known_hosts` (e.g., `ssh-keyscan mft-test.kuehne-nagel.com >> ~/.ssh/known_hosts`).
