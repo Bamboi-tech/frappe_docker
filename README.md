@@ -97,24 +97,24 @@ This repository is only for container related stuff. You also might want to cont
 Create host directories for bind mounts (one time):
 
 ```bash
-mkdir -p ~/frappe-local/{apps,sites,logs,gitops}
+mkdir -p ./frappe-local/{apps,sites,logs,gitops}
 ```
 
-Folder layout (recommended)
+#### Folder layout
+Make sure the frappe_docker is inside the frappe_local directory.
 
 ```bash
-cd ~/frappe-local
+cd ./frappe-local
 git clone https://github.com/Bamboi-tech/frappe_docker
 cd frappe_docker
 cp example.env .env
-export PROJECT_ROOT="$HOME/frappe-local"
 ```
 
 Alternative: You can keep `frappe_docker` elsewhere; ensure `PROJECT_ROOT` points to the absolute `~/frappe-local` path and the `~/frappe-local/{apps,sites,logs,gitops}` directories exist before bringing the stack up.
 
 Clone this repo (fork) and prepare env:
 
-Local dev env vars (example):
+Local dev env vars (**example**):
 
 ```plaintext
 SITES=dev.localhost
@@ -126,7 +126,6 @@ PROJECT_ROOT=/Users/<you>/frappe-local
 Render compose to ../gitops with overrides, then up:
 
 ```bash
-mkdir -p ../gitops
 docker compose -f compose.yaml \
   -f overrides/compose.mariadb.yaml \
   -f overrides/compose.redis.yaml \
@@ -136,13 +135,30 @@ docker compose -f compose.yaml \
   config > ../gitops/docker-compose.yml
 
 docker compose -p frappe-local -f ../gitops/docker-compose.yml up -d --force-recreate
-```
+```****
 
 Ensure apps.txt exists (bind-mounts hide the image default)
 
 ```bash
 mkdir -p ~/frappe-local/sites
 printf "frappe\nerpnext\n" > ~/frappe-local/sites/apps.txt
+```
+
+Ensure common_site_config.json exists inside /sites
+```json
+{
+ "asset_version": "1762777856",
+ "db_host": "db",
+ "db_port": 3306,
+ "developer_mode": 1,
+ "file_watcher_port": 6787,
+ "kn_sftp_key_path": "/home/frappe/.ssh/kn_mft_test_ed25519",
+ "mute_emails": 1,
+ "redis_cache": "redis://redis-cache:6379",
+ "redis_queue": "redis://redis-queue:6379",
+ "redis_socketio": "redis://redis-queue:6379",
+ "socketio_port": 9000
+}
 ```
 
 Create the site (dev.localhost)
@@ -155,6 +171,11 @@ docker compose -p frappe-local exec backend bash -lc '
     --db-root-password 123 \
     --admin-password admin
 '
+```
+
+If an error occured you wont be able to create the site twice so this command will remove the site first:
+```bash
+docker-compose -p frappe-local exec backend bash -lc 'cd /home/frappe/frappe-bench && bench drop-site dev.localhost --force'
 ```
 
 Shared assets volume
