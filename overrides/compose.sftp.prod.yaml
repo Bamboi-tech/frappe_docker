@@ -1,0 +1,4 @@
+services:
+  backend:
+    volumes:
+      - ~/.ssh/kn_mft_ed25519:/home/frappe/.ssh/kn_mft_ed25519:ro

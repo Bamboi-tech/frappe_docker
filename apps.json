@@ -4,6 +4,10 @@
     "branch": "version-15"
   },
   {
+    "url": "https://github.com/Bamboi-tech/kn_integration.git",
+    "branch": "develop"
+  },
+  {
     "url": "https://github.com/Bamboi-tech/frappe_ecommerce_integrations",
     "branch": "develop"
   },

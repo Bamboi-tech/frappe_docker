@@ -1,0 +1,9 @@
+services:
+  backend:
+    volumes:
+      - ${PROJECT_ROOT}/sites:/home/frappe/frappe-bench/sites
+      - ${PROJECT_ROOT}/logs:/home/frappe/frappe-bench/logs
+      - ${PROJECT_ROOT}/apps/kn_integration:/home/frappe/frappe-bench/apps/kn_integration
+  frontend:
+    volumes:
+      - ${PROJECT_ROOT}/sites:/home/frappe/frappe-bench/sites:ro

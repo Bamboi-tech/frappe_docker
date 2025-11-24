@@ -46,6 +46,9 @@ RUN useradd -ms /bin/bash frappe \
     && nvm install ${NODE_VERSION} \
     && nvm use v${NODE_VERSION} \
     && npm install -g yarn \
+    && npm install -g pnpm corepack \
+    && corepack enable \
+    && corepack prepare pnpm@latest --activate \
     && nvm alias default v${NODE_VERSION} \
     && rm -rf ${NVM_DIR}/.cache \
     && echo 'export NVM_DIR="/home/frappe/.nvm"' >>/home/frappe/.bashrc \

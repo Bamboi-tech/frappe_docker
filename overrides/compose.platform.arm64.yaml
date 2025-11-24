@@ -1,0 +1,8 @@
+services:
+  configurator: { platform: linux/arm64 }
+  backend:      { platform: linux/arm64 }
+  frontend:     { platform: linux/arm64 }
+  websocket:    { platform: linux/arm64 }
+  queue-short:  { platform: linux/arm64 }
+  queue-long:   { platform: linux/arm64 }
+  scheduler:    { platform: linux/arm64 }
