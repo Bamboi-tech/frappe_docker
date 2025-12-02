@@ -51,6 +51,13 @@ RUN useradd -ms /bin/bash frappe \
     && corepack prepare pnpm@latest --activate \
     && nvm alias default v${NODE_VERSION} \
     && rm -rf ${NVM_DIR}/.cache \
+    # ensure runtime access for non-root user and stable PATH-less shims
+    && chown -R frappe:frappe ${NVM_DIR} \
+    && ln -sf ${NVM_DIR}/versions/node/v${NODE_VERSION}/bin/node /usr/local/bin/node \
+    && ln -sf ${NVM_DIR}/versions/node/v${NODE_VERSION}/bin/npm /usr/local/bin/npm \
+    && ln -sf ${NVM_DIR}/versions/node/v${NODE_VERSION}/bin/npx /usr/local/bin/npx \
+    && ln -sf ${NVM_DIR}/versions/node/v${NODE_VERSION}/bin/yarn /usr/local/bin/yarn || true \
+    && ln -sf ${NVM_DIR}/versions/node/v${NODE_VERSION}/bin/pnpm /usr/local/bin/pnpm || true \
     && echo 'export NVM_DIR="/home/frappe/.nvm"' >>/home/frappe/.bashrc \
     && echo '[ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"  # This loads nvm' >>/home/frappe/.bashrc \
     && echo '[ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"  # This loads nvm bash_completion' >>/home/frappe/.bashrc \
