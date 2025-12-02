@@ -133,7 +133,7 @@ docker compose -f frappe_docker/compose.yaml \
   -f frappe_docker/overrides/compose.ports.yaml \
   config > gitops/docker-compose.yml
 
-docker compose -p frappe-local -f ../gitops/docker-compose.yml up -d --force-recreate
+docker compose -p frappe-local -f gitops/docker-compose.yml up -d --force-recreate
 ```
 
 If you want to develop kn_integration locally add these to the docker-compose.yml as well:
@@ -259,7 +259,7 @@ docker builder prune -af
 docker image prune -af
 
 export APPS_JSON_BASE64=$(base64 -w 0 apps.json)
-docker build \
+docker build --no-cache \
   --build-arg=FRAPPE_PATH=https://github.com/frappe/frappe \
   --build-arg=FRAPPE_BRANCH=version-15 \
   --build-arg=APPS_JSON_BASE64=$APPS_JSON_BASE64 \
