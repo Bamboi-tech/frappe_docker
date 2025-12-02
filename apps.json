@@ -24,7 +24,15 @@
     "branch": "develop"
   },
   {
-    "url": "https://github.com/frappe/crm",
+    "url": "https://github.com/rtCamp/next-crm",
+    "branch": "main"
+  },
+  {
+    "url": "https://github.com/rtCamp/frappe-slack-connector",
+    "branch": "main"
+  },
+  {
+    "url": "https://github.com/alyf-de/eu_einvoice",
     "branch": "develop"
   },
   {
