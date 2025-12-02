@@ -24,6 +24,10 @@
     "branch": "develop"
   },
   {
+    "url": "https://github.com/rtCamp/frappe-search",
+    "branch": "main"
+  },
+  {
     "url": "https://github.com/rtCamp/next-crm",
     "branch": "main"
   },
