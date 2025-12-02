@@ -100,7 +100,8 @@ Create host directories for bind mounts (one time):
 mkdir -p ./frappe-local/{apps,sites,logs,gitops}
 ```
 
-#### Folder layout
+### Folder layout
+
 Make sure the frappe_docker is inside the frappe_local directory.
 
 ```bash
@@ -110,41 +111,47 @@ cd frappe_docker
 cp example.env .env
 ```
 
-Alternative: You can keep `frappe_docker` elsewhere; ensure `PROJECT_ROOT` points to the absolute `~/frappe-local` path and the `~/frappe-local/{apps,sites,logs,gitops}` directories exist before bringing the stack up.
-
-Clone this repo (fork) and prepare env:
-
 Local dev env vars (**example**):
 
 ```plaintext
 SITES=dev.localhost
 PULL_POLICY=always
 # absolute path of your local monorepo root
-PROJECT_ROOT=/Users/<you>/frappe-local
+PROJECT_ROOT=<path-to>/frappe-local
 ```
 
 Render compose to ../gitops with overrides, then up:
 
 ```bash
-docker compose -f compose.yaml \
-  -f overrides/compose.mariadb.yaml \
-  -f overrides/compose.redis.yaml \
-  -f overrides/compose.bind-mounts.yaml \
-  -f overrides/compose.assets.volume.yaml \
-  -f overrides/compose.ports.yaml \
-  config > ../gitops/docker-compose.yml
+cd <path-to>/frappe-local
+
+docker compose -f frappe_docker/compose.yaml \
+  -f frappe_docker/overrides/compose.mariadb.yaml \
+  -f frappe_docker/overrides/compose.redis.yaml \
+  -f frappe_docker/overrides/compose.assets.volume.yaml \
+  -f frappe_docker/overrides/compose.platform.arm64.yaml \
+  -f frappe_docker/overrides/compose.ports.yaml \
+  config > gitops/docker-compose.yml
 
 docker compose -p frappe-local -f ../gitops/docker-compose.yml up -d --force-recreate
-```****
+```
 
-Ensure apps.txt exists (bind-mounts hide the image default)
+If you want to develop kn_integration locally add these to the docker-compose.yml as well:
 
 ```bash
-mkdir -p ~/frappe-local/sites
-printf "frappe\nerpnext\n" > ~/frappe-local/sites/apps.txt
+  -f frappe_docker/overrides/compose.kn-only.yaml \
+  -f frappe_docker/overrides/compose.sftp.local.yaml \
+```
+
+When editing apps locally, ensure apps.txt exists (bind-mounts hide the image default)
+
+```bash
+mkdir -p <path-to>/frappe-local/sites
+printf "frappe\nerpnext\n" > <path-to>/frappe-local/sites/apps.txt
 ```
 
 Ensure common_site_config.json exists inside /sites
+
 ```json
 {
  "asset_version": "1762777856",
@@ -173,51 +180,26 @@ docker compose -p frappe-local exec backend bash -lc '
 '
 ```
 
-If an error occured you wont be able to create the site twice so this command will remove the site first:
+If an error occurred you wont be able to create the site twice so this command will remove the site first:
+
 ```bash
 docker-compose -p frappe-local exec backend bash -lc 'cd /home/frappe/frappe-bench && bench drop-site dev.localhost --force'
 ```
 
-Shared assets volume
-
-- This fork includes `overrides/compose.assets.volume.yaml`, ensuring backend and frontend share `sites/assets` to prevent hashed CSS/JS mismatches. For clarity, the override looks like:
-
-```yaml
-services:
-  backend:
-    volumes:
-      - assets:/home/frappe/frappe-bench/sites/assets
-  frontend:
-    volumes:
-      - assets:/home/frappe/frappe-bench/sites/assets:ro
-volumes:
-  assets:
-    name: frappe_docker_assets
-```
-
 Install apps for local dev (bind-mount workflow)
 
-- Because `apps/` is bind-mounted, clones will appear under `~/frappe-local/apps/<app>` so you can edit on host.
+- Because overrides/compose.kn-only.yaml makes `apps/kn_integration` bind-mounted, a clone of the app will appear under `<path-to>/frappe-local/apps/kn_integration` so you can edit locally.
+
 
 ```bash
-docker compose -p frappe-local exec backend bench get-app --branch develop https://github.com/Bamboi-tech/kn_integration
+git clone git@github.com:Bamboi-tech/kn_integration.git <path-to>/frappe-local/apps/kn_integration
 docker compose -p frappe-local exec backend bench --site dev.localhost install-app kn_integration
 ```
-
-⚠️ Private apps (UNTESTED):
-
-- Do NOT put private repos in `apps.json` for local bind-mount development. Clone them on the host via SSH and then run `install-app` as above. Example:
-
-```bash
-git clone git@github.com:Bamboi-tech/kn_integration.git ~/frappe-local/apps/kn_integration
-docker compose -p frappe-local exec backend bench --site dev.localhost install-app kn_integration
-```
-
-- Optionally keep a separate `apps.private.json` (committed here for tracking only) and use it to remember URLs/branches. Credentials must never be baked into images.
 
 Zsh helper to rebuild/sync assets (subshell-safe)
 
 - Add to your `~/.zshrc`, then `source ~/.zshrc`. Running in a subshell prevents your interactive shell from closing due to `-euo pipefail`.
+- COMPOSE_FILE might be a different path for you. change if necessary.
 
 ```bash
 frappe_assets_sync() (
@@ -230,7 +212,7 @@ frappe_assets_sync() (
   docker compose -p "$PROJECT" -f "$COMPOSE_FILE" exec backend bash -lc "
     set -e
     cd /home/frappe/frappe-bench
-    NODEBIN=\$(ls -d /home/frappe/.nvm/versions/node/*/bin | head -n1); export PATH=\"$NODEBIN:$PATH\"
+    NODEBIN=\$(ls -d /home/frappe/.nvm/versions/node/*/bin | head -n1); export PATH=\"\$NODEBIN:\$PATH\"
     bench --site $SITE migrate
     bench build --force
     for app in \$(cat sites/apps.txt); do
@@ -256,48 +238,6 @@ frappe_assets_sync() (
 )
 ```
 
-Optional: Local VM-style build (apps.json)
-
-- You can mirror the VM flow locally (build image). You can still include bind-mounts to override a baked app while developing.
-- macOS-safe base64:
-
-```bash
-export APPS_JSON_BASE64="$(base64 < apps.json | tr -d '\n')"
-```
-
-- GNU/Linux:
-
-```bash
-export APPS_JSON_BASE64=$(base64 -w 0 apps.json)
-```
-
-- Build:
-
-```bash
-docker build \
-  --build-arg=FRAPPE_PATH=https://github.com/frappe/frappe \
-  --build-arg=FRAPPE_BRANCH=version-15 \
-  --build-arg=APPS_JSON_BASE64=$APPS_JSON_BASE64 \
-  --tag=custom:15 \
-  --file=images/custom/Containerfile .
-```
-
-- In `.env` set:
-
-```plaintext
-SITES=dev.localhost
-CUSTOM_IMAGE=custom
-CUSTOM_TAG=15
-PULL_POLICY=never
-PROJECT_ROOT=/Users/<you>/frappe-local
-```
-
-- If you want live edits, include `overrides/compose.bind-mounts.yaml` too; otherwise omit it to test the baked image only.
-
-⚠️ Private apps (UNTESTED):
-
-- Keep private apps OUT of `apps.json` unless you are set up to provide credentials to the build (e.g., BuildKit SSH forwarding) or fetch at runtime with an SSH mount. Prefer keeping private entries in `apps.private.json` and installing them via host clone + `install-app`.
-
 ## Production (VM) setup
 
 Env (example):
@@ -311,8 +251,13 @@ PULL_POLICY=never
 ```
 
 Build custom image from apps.json:
+:heavy_exclamation_mark: This step takes longer the more apps are in apps.json :heavy_exclamation_mark: Make sure that for every app you also have the required apps. To find required apps go to repo and search "required_apps".
+:heavy_exclamation_mark: Also prune docker builder and image to make sure there is enough space. :heavy_exclamation_mark:
 
 ```bash
+docker builder prune -af
+docker image prune -af
+
 export APPS_JSON_BASE64=$(base64 -w 0 apps.json)
 docker build \
   --build-arg=FRAPPE_PATH=https://github.com/frappe/frappe \
@@ -331,91 +276,62 @@ docker compose -f compose.yaml \
   -f overrides/compose.redis.yaml \
   -f overrides/compose.https-dynamic.yaml \
   -f overrides/compose.assets.volume.yaml \
+  -f overrides/compose.sftp.prod.yaml \
   config > ~/gitops/docker-compose.yml
 
 docker compose -p erpnext-vm-bamboi -f ~/gitops/docker-compose.yml up -d --force-recreate
 ```
 
-Zsh helper (VM defaults):
-Zsh helper to rebuild/sync assets (subshell-safe)
-
-- Add to your `~/.zshrc`, then `source ~/.zshrc`. Running in a subshell prevents your interactive shell from closing due to `-euo pipefail`.
-
+Create the site (erp.bamboi.eu) (only once)
 
 ```bash
-frappe_assets_sync_vm() (
-  set -euo pipefail
-
-  PROJECT=${1:-erpnext-vm-bamboi}
-  COMPOSE_FILE="${2:-$HOME/gitops/docker-compose.yml}"
-  SITE=${3:-erp.bamboi.eu}
-
-  docker compose -p "$PROJECT" -f "$COMPOSE_FILE" exec backend bash -lc "
-    set -e
-    cd /home/frappe/frappe-bench
-    NODEBIN=\$(ls -d /home/frappe/.nvm/versions/node/*/bin | head -n1); export PATH=\"$NODEBIN:$PATH\"
-    bench --site $SITE migrate
-    bench build --force
-    for app in \$(cat sites/apps.txt); do
-      [ -d apps/\$app/\$app/public ] || continue
-      src=\"apps/\$app/\$app/public\"; dst=\"sites/assets/\$app\"
-      rm -rf \"\$dst\"; mkdir -p \"\$dst\"; cp -a \"\$src/.\" \"\$dst/\"
-    done
-    bench set-config -g asset_version \$(date +%s)
-    bench --site $SITE clear-website-cache
-    bench --site $SITE clear-cache
-  "
-
-  docker compose -p "$PROJECT" -f "$COMPOSE_FILE" restart backend frontend
-
-  docker compose -p "$PROJECT" -f "$COMPOSE_FILE" exec backend  md5sum sites/assets/assets.json
-  docker compose -p "$PROJECT" -f "$COMPOSE_FILE" exec frontend md5sum sites/assets/assets.json
-
-  HASH=$(docker compose -p "$PROJECT" -f "$COMPOSE_FILE" exec -T backend bash -lc \
-    "grep -o 'desk.bundle.[A-Z0-9]\\+\\.css' sites/assets/assets.json | tail -n1" | tr -d $'\r')
-  echo "CSS hash: $HASH"
-  docker compose -p "$PROJECT" -f "$COMPOSE_FILE" exec backend  bash -lc "ls -l sites/assets/frappe/dist/css/$HASH"
-  docker compose -p "$PROJECT" -f "$COMPOSE_FILE" exec frontend bash -lc "ls -l sites/assets/frappe/dist/css/$HASH"
-)
+docker compose -p erpnext-vm-bamboi exec backend bash -lc '
+  cd /home/frappe/frappe-bench
+  bench new-site erp.bamboi.eu \
+    --mariadb-user-host-login-scope=% \
+    --db-root-password 123 \
+    --admin-password admin
+'
 ```
 
-Notes:
-
-- Local uses bind mounts (`overrides/compose.bind-mounts.yaml`) and `PROJECT_ROOT`; VM uses a custom image built from `apps.json`. Both use the shared `assets` volume override to prevent CSS/JS hash mismatches.
-- If a repo URL changes but the app’s internal `app_name` stays the same, just update `apps.json` and rebuild/redeploy; the site remains intact.
-
-⚠️ Private apps (UNTESTED):
-
-- For production builds, keep private apps out of `apps.json`. Options:
-  - Clone and install after deploy via a temporary SSH key mount into `backend`, then run `bench get-app`/`install-app`, remove the mount, and rebuild assets.
-  - Or use BuildKit with `RUN --mount=type=ssh` in the image build to fetch private repos without persisting the key in layers. Validate this in your environment before relying on it.
-  - Track private app URLs in `apps.private.json` for documentation only.
-
-Deploy key on VM
-
-- The VM has an SSH key (deploy key) authorized for Bamboi-tech private repos (e.g., `~/.ssh/id_ed25519`). Do not bake this into images. If you need to fetch a private app from inside the container, mount the key temporarily and run the fetch:
+### (Un)install apps from apps.json on the VM
 
 ```bash
-# example: one-off override to mount key into backend
-cat > /tmp/compose.ssh-mount.yaml <<'YAML'
-services:
-  backend:
-    volumes:
-      - ~/.ssh/id_ed25519:/home/frappe/.ssh/id_ed25519:ro
-      - ~/.ssh/known_hosts:/home/frappe/.ssh/known_hosts:ro
-YAML
+DC='docker compose -p erpnext-vm-bamboi -f /home/olivierguntenaar/gitops/docker-compose.yml'
+SITE=erp.bamboi.eu
+```
 
-docker compose -p erpnext-vm-bamboi \
-  -f ~/gitops/docker-compose.yml \
-  -f /tmp/compose.ssh-mount.yaml up -d
+### Optional: confirm it's installed
 
-docker compose -p erpnext-vm-bamboi exec backend bash -lc '
-  set -e
-  chmod 600 /home/frappe/.ssh/id_ed25519
-  GIT_SSH_COMMAND="ssh -i /home/frappe/.ssh/id_ed25519 -o StrictHostKeyChecking=accept-new" \
-    bench get-app --branch develop git@github.com:Bamboi-tech/kn_integration.git
-  bench --site erp.bamboi.eu install-app kn_integration
-'
+```bash
+$DC exec backend bash -lc "bench --site $SITE list-apps"
+```
 
-# remove the temporary mount by re-rendering without the override if desired
+### Safer: enable maintenance
+
+```bash
+$DC exec backend bash -lc "bench --site $SITE set-maintenance-mode on"
+
+```
+
+### (Un)install app
+
+```bash
+$DC exec backend bash -lc "bench --site $SITE uninstall-app <app>"
+$DC exec backend bash -lc "bench --site $SITE install-app <app>"
+```
+
+### Finish up
+
+```bash
+$DC exec backend bash -lc "bench --site $SITE migrate"
+$DC exec backend bash -lc "bench --site $SITE set-maintenance-mode off"
+$DC exec backend bash -lc "bench --site $SITE clear-cache && bench --site $SITE clear-website-cache"
+$DC restart backend frontend
+```
+
+### Verify it's gone
+
+```bash
+$DC exec backend bash -lc "bench --site $SITE list-apps"
 ```
