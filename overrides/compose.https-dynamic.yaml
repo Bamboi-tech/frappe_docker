@@ -35,8 +35,8 @@ services:
       # Mount a folder for dynamic rules:
       - /opt/traefik/dynamic:/dynamic:ro
     # Make "host.docker.internal" resolve to the host on Linux:
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
+    # extra_hosts:
+    #   - "host.docker.internal:host-gateway"
 
 volumes:
   cert-data:

@@ -254,16 +254,19 @@ Build custom image from apps.json:
 :heavy_exclamation_mark: This step takes longer the more apps are in apps.json :heavy_exclamation_mark: Make sure that for every app you also have the required apps. To find required apps go to repo and search "required_apps".
 :heavy_exclamation_mark: Also prune docker builder and image to make sure there is enough space. :heavy_exclamation_mark:
 
+<!-- TODO: --no-cache is used because the apps.json is following branches like main and develop instead of tags
+deprecate using ecommerce integrations -->
 ```bash
 docker builder prune -af
 docker image prune -af
 
 export APPS_JSON_BASE64=$(base64 -w 0 apps.json)
 docker build --no-cache \
+  --platform linux/amd64 \
   --build-arg=FRAPPE_PATH=https://github.com/frappe/frappe \
   --build-arg=FRAPPE_BRANCH=version-15 \
   --build-arg=APPS_JSON_BASE64=$APPS_JSON_BASE64 \
-  --tag=custom:15 \
+  --tag=frappe/erpnext:v15.94.3 \
   --file=images/custom/Containerfile .
 ```
 
@@ -308,6 +311,7 @@ $DC exec backend bash -lc "bench --site $SITE list-apps"
 ```
 
 ### Safer: enable maintenance
+
 
 ```bash
 $DC exec backend bash -lc "bench --site $SITE set-maintenance-mode on"
