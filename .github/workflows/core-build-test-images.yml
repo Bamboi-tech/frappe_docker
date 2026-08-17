@@ -39,7 +39,7 @@ jobs:
       erpnext_version: ${{ steps.resolve.outputs.erpnext_version }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Resolve image versions
         id: resolve
@@ -60,7 +60,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Setup QEMU
         uses: docker/setup-qemu-action@v4
@@ -87,7 +87,7 @@ jobs:
           echo "NODE_VERSION=${{ inputs.node_version }}" >> "$GITHUB_ENV"
 
       - name: Build
-        uses: docker/bake-action@v7.1.0
+        uses: docker/bake-action@v7.3.0
         with:
           source: .
           push: true
@@ -95,7 +95,7 @@ jobs:
           REGISTRY_USER: localhost:5000/frappe
 
       - name: Setup Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@v7
         with:
           python-version: "3.10"
 
